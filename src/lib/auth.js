@@ -12,10 +12,12 @@ export async function comparePasswords(password, hash) {
   return await bcrypt.compare(password, hash);
 }
 
+// Long lived refresh token for refreshing access token
 export function generateRefreshToken() {
   return randomBytes(32).toString("hex");
 }
 
+// Short lived access token for authentication
 export async function generateAccessToken(userId) {
   return await sign(
     {

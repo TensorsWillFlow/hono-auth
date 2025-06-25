@@ -1,4 +1,4 @@
-# Hono & Drizzle API Backend
+# Hono-Auth API Backend
 
 This project is a secure and robust backend API built with [Hono](https://hono.dev/) on Node.js, using [Drizzle ORM](https://orm.drizzle.team/) for database interactions with a PostgreSQL database. It includes a complete JWT-based authentication system with refresh tokens and a session table for enhanced security.
 
@@ -38,7 +38,7 @@ cp .env.example .env
 Now, open the `.env` file and configure your variables:
 
 - `DATABASE_URL`: Your full PostgreSQL connection string.
-- `FRONTEND_URL`: The URL of your frontend application (e.g., `http://localhost:5173`).
+- `FRONTEND_URL`: The URL of your frontend application (e.g., `http://localhost:5173` for development).
 - `ACCESS_TOKEN_SECRET`: A long, random, secret string for signing access tokens.
 - `REFRESH_TOKEN_SECRET`: A different long, random, secret string for signing refresh tokens.
 
@@ -113,9 +113,71 @@ All endpoints are prefixed with `/api`.
 
 ## Authentication Flow Explained
 
+![Authentication Flow](./auth-flow.png)
+
 This application uses a hybrid token-based authentication system for a balance of performance and security.
 
 1.  **Login:** When you log in, the server gives you two tokens: a short-lived `accessToken` and a long-lived `refreshToken`. The refresh token is stored in the `sessions` table in the database.
 2.  **API Requests:** For most requests, you send the `accessToken` in the `Authorization` header. The server quickly verifies this token without needing to check the database.
 3.  **Token Expiration:** When the `accessToken` expires (after 15 minutes), your application uses the `refreshToken` to request a new `accessToken` from the `/auth/refresh` endpoint.
 4.  **Logout:** When you log out, the server deletes the `refreshToken` from the database. This effectively invalidates the session, and the token can no longer be used to get new access tokens.
+
+## Deployment with systemd
+
+For running this application in a production environment on a Linux server, it's recommended to use `systemd` to manage the process.
+
+1.  **Create a service file** on your server at `/etc/systemd/system/hono-auth.service`:
+
+    ```bash
+    sudo nano /etc/systemd/system/hono-auth.service
+    ```
+
+2.  **Add the following content**, replacing `/path/to/your/project/hono-auth` and `your_user` with your actual project path and Linux username.
+
+    ```ini
+    [Unit]
+    Description=Hono Auth Backend API
+    After=network.target postgresql.service
+
+    [Service]
+    # User and Group to run the service as
+    User=your_user
+    Group=your_user
+
+    # The working directory for the application
+    WorkingDirectory=/path/to/your/project/hono-auth
+
+    # The command to start the application
+    # It's best to use the full path to npm, which you can find with `which npm`
+    ExecStart=/usr/bin/npm start
+
+    # Environment variables needed by the application
+    # This securely loads the .env file from your project directory
+    EnvironmentFile=/path/to/your/project/hono-auth/.env
+
+    # Restart the service if it fails
+    Restart=always
+    RestartSec=10
+
+    # Configure logging to be handled by systemd's journal
+    StandardOutput=journal
+    StandardError=journal
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+3.  **Reload the systemd daemon, enable, and start the service:**
+
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now hono-auth.service
+    ```
+
+    The `--now` flag enables and starts the service in a single command.
+
+4.  **Check the status and logs:**
+    ```bash
+    sudo systemctl status hono-auth.service
+    journalctl -u hono-auth.service -f
+    ```
