@@ -3,22 +3,24 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
+import { tenant } from "./middleware/tenant.js";
 import authRouter from "./routes/auth.js";
 import usersRouter from "./routes/users.js";
 
-const app = new Hono().basePath("/api");
+const app = new Hono().basePath("/api"); // If routing is configured in nginx or elsewhere, you can remove this basePath
 
-// CORS configuration should be one of the first middleware
+// The CORS configuration allows requests from the frontend URL specified in the environment variable FRONTEND_URL.
+// If FRONTEND_URL is not set, it defaults to "http://localhost:5173", which is suitable for local development.
 app.use(
   "*",
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173", // Default for local dev, please change this to your frontend url if using a different port
+    origin: process.env.FRONTEND_URL || "http://localhost:5173", // Default for local dev, change this to your frontend url if using a different port
     credentials: true,
   })
 );
-
 app.use("*", logger());
 app.use("*", prettyJSON());
+app.use("*", tenant); // All routes after this will have access to the tenant's database connection
 
 app.onError((err, c) => {
   console.error("Server Error:", err);
@@ -32,7 +34,7 @@ app.onError((err, c) => {
 });
 
 app.get("/", (c) => {
-  return c.json({ message: "Hello, World!" });
+  return c.json({ message: "API is running" });
 });
 
 app.route("/auth", authRouter);
