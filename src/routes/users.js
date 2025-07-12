@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { db } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { users } from "../schema/index.js";
 
@@ -12,6 +11,7 @@ users_router.use("*", authMiddleware);
 users_router.get("/me", async (c) => {
   const payload = c.get("jwtPayload");
   const userId = payload.sub;
+  const db = c.get("db");
 
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),

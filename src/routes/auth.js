@@ -1,8 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { db } from "../db/index.js";
 import { comparePasswords, generateAccessToken, generateRefreshToken, hashPassword } from "../lib/auth.js";
 import { sessions, users } from "../schema/index.js";
 
@@ -25,8 +24,9 @@ const refreshSchema = z.object({
 
 auth.post("/register", zValidator("json", registerSchema), async (c) => {
   const { username, email, password } = c.req.valid("json");
+  const db = c.get("db");
 
-  // Check if user already exists
+  // Check if user already exists (this query now automatically runs in the tenant's schema)
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, email),
   });
@@ -57,6 +57,7 @@ auth.post("/register", zValidator("json", registerSchema), async (c) => {
 
 auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
+  const db = c.get("db");
 
   const user = await db.query.users.findFirst({
     where: eq(users.email, email),
@@ -75,9 +76,11 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const accessToken = await generateAccessToken(user.id);
 
   // Store the refresh token in the database
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day from now
   await db.insert(sessions).values({
     userId: user.id,
     refreshToken,
+    expiresAt,
   });
 
   return c.json({
@@ -93,14 +96,15 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
 
 auth.post("/refresh", zValidator("json", refreshSchema), async (c) => {
   const { refreshToken } = c.req.valid("json");
+  const db = c.get("db");
 
   // Find the session in the database
   const session = await db.query.sessions.findFirst({
-    where: eq(sessions.refreshToken, refreshToken),
+    where: and(eq(sessions.refreshToken, refreshToken), gt(sessions.expiresAt, new Date())),
   });
 
   if (!session) {
-    return c.json({ error: "Invalid refresh token" }, 401);
+    return c.json({ error: "Invalid or expired refresh token" }, 401);
   }
 
   // Generate a new access token
@@ -111,6 +115,7 @@ auth.post("/refresh", zValidator("json", refreshSchema), async (c) => {
 
 auth.post("/logout", zValidator("json", refreshSchema), async (c) => {
   const { refreshToken } = c.req.valid("json");
+  const db = c.get("db");
 
   // Delete the session from the database
   await db.delete(sessions).where(eq(sessions.refreshToken, refreshToken));
